@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Animated ASCII Eye</title>
+<style>
+body{margin:0;width:100%;height:100vh;background:#050505;overflow:hidden}
+main{position:relative;width:100%;height:100%;display:grid;place-items:center}
+canvas{display:block;width:100%;height:100%;object-fit:contain;cursor:pointer}
+.hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);color:#777;font:11px 'Courier New',monospace;
+  letter-spacing:1px;white-space:nowrap;pointer-events:none}
+.hint span{color:#ff7744}
+</style>
+</head>
+<body>
+<main>
+  <canvas id="c" width="1280" height="561"></canvas>
+  <div class="hint">move your <span>mouse</span> to look · <span>click</span> to transform</div>
+</main>
+
+<script>
+'use strict';
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const CW=8,CH=11,COLS=160,ROWS=51,W=COLS*CW,H=ROWS*CH,AX=W/H;
+const RAMP=" .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
+const PI=Math.PI,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const smooth=(a,b,v)=>{v=clamp((v-a)/(b-a),0,1);return v*v*(3-2*v)};
+const hash=(i,j)=>{const s=Math.sin(i*127.1+j*311.7)*43758.5453;return s-Math.floor(s)};
+
+/* colour -> style string cache (4-bit quantised) */
+const cache=new Map();
+function style(r,g,b){
+  const k=(clamp(r,0,255)>>4)<<8|(clamp(g,0,255)>>4)<<4|(clamp(b,0,255)>>4);
+  let s=cache.get(k);
+  if(!s){s=`rgb(${(k>>8)*17},${((k>>4)&15)*17},${(k&15)*17})`;cache.set(k,s)}
+  return s;
+}
+
+/* state */
+let m=0,mTarget=0,openAmt=0,timer=0,blinkAt=3,blinkT=-1;
+let lx=-.6,ly=0,tx=0,ty=0,lastMove=-99;
+const stars=[...Array(150)].map((_,n)=>{
+  const inner=n<60,a=Math.random()*PI*2,r=Math.random()*.6;
+  return{x:inner?Math.cos(a)*r*AX*.6:(Math.random()*2-1)*AX,y:inner?Math.sin(a)*r:(Math.random()*2-1),
+         ph:Math.random()*9,sp:2+Math.random()*4,big:Math.random()<.18};
+});
+
+cv.addEventListener('pointermove',e=>{
+  const r=cv.getBoundingClientRect();
+  tx=clamp((e.clientX-(r.left+r.width/2))/(r.width/2),-1,1);
+  ty=clamp((e.clientY-(r.top+r.height/2))/(r.height/2),-1,1);
+  lastMove=performance.now()/1000;
+});
+function toggle(){mTarget=mTarget?0:1;timer=0;if(!mTarget)openAmt=0}
+cv.addEventListener('click',toggle);
+addEventListener('keydown',e=>{if(e.key===' ')toggle()});
+
+/* one cell of the eye -> [lum,r,g,b] */
+function eyeCell(x,y,i,j,t,pr,ex,ey){
+  const ew=1.9,eh=.85*Math.max(.001,ex),nx=Math.abs(x)/ew;
+  const lid=nx<1?eh*Math.pow(1-nx*nx,.75):-1;
+  const up=-lid,lo=lid*.85,inside=nx<1&&y>up&&y<lo;
+  if(!inside){
+    // skin + eyelid crease
+    let L=.2+.08*Math.sin(y*38+x*2.5)+.05*hash(i,j);
+    let cr=nx<1.15?(y-(-(eh*Math.pow(Math.max(0,1-nx*nx),.75))-.3*ex)):9;
+    if(Math.abs(cr)<.045)L=.6;
+    const k=.35+.65*ex;
+    return[L*k,170,115,80];
+  }
+  const de=Math.min(y-up,lo-y),shade=smooth(0,.3,de);
+  const dx=x-lx*.55,dy=y-ly*.25,r=Math.hypot(dx,dy),ir=.66;
+  if(de<.05)return[.75,240,200,180];                  // lid edge
+  if(r<pr){                                            // pupil
+    if(Math.hypot(dx+.09,dy+.09)<.05)return[.95,255,255,255];
+    return[.03,20,10,10];
+  }
+  if(r<ir){                                            // iris
+    const tt=(r-pr)/(ir-pr),a=Math.atan2(dy,dx);
+    const fib=.5+.5*Math.sin(a*26+Math.sin(a*5)*1.5);
+    let L=.3+.5*fib*(1-tt*.5)+(tt<.2?.2:0);
+    if(tt>.88)L*=.45;
+    L*=.55+.45*shade;
+    return[L,235-95*tt,125-55*tt,45-25*tt];
+  }
+  const L=.3+.45*shade;                                // sclera
+  return[L,nx>.8?232:236,nx>.8?150:225,nx>.8?140:214];
+}
+
+function heartCell(x,y,pulse){
+  const s=.36*pulse,X=x/s,Y=-(y-.04)/s;
+  const a=X*X+Y*Y-1,f=a*a*a-X*X*Y*Y*Y;
+  if(f<=0){const v=Math.min(1,-f*1.2);return[.4+.55*v,255-90*(1-v),95+30*v,140+10*v,1]}
+  if(f<.35)return[.22*(1-f/.35),255,70,120,.5];
+  return null;
+}
+
+let last=performance.now()/1000;
+function frame(){
+  const t=performance.now()/1000,dt=Math.min(.05,t-last);last=t;
+
+  // timeline
+  timer+=dt;
+  if(timer>(mTarget?7:8)){mTarget=mTarget?0:1;timer=0;if(!mTarget)openAmt=0}
+  m+=clamp(mTarget-m,-dt*.7,dt*.4);
+  openAmt=Math.min(1,openAmt+dt/1.8);
+  if(t>blinkAt&&blinkT<0){blinkT=0}
+  let blink=0;
+  if(blinkT>=0){blinkT+=dt;const p=blinkT/.2;blink=Math.sin(PI*Math.min(1,p));if(p>=1){blinkT=-1;blinkAt=t+3+Math.random()*3}}
+  const ex=smooth(0,1,openAmt)*(1-blink*.95);
+
+  // look
+  const idle=t-lastMove>2.5;
+  const gx=idle?Math.sin(t*.7)*.8:tx,gy=idle?Math.sin(t*.9)*.6:ty;
+  lx+=(gx-lx)*Math.min(1,dt*6);ly+=(gy-ly)*Math.min(1,dt*6);
+  const pr=.22*(1+.8*m+.1*Math.sin(t*2));
+  const pulse=1+.06*Math.sin(t*6),hm=smooth(.45,.95,m),sm=smooth(.08,.5,m);
+
+  ctx.fillStyle='#050505';ctx.fillRect(0,0,W,H);
+  ctx.font='12px "Courier New",monospace';ctx.textBaseline='top';
+
+  for(let j=0;j<ROWS;j++){
+    const y=(j+.5)/ROWS*2-1;
+    for(let i=0;i<COLS;i++){
+      const x=((i+.5)/COLS*2-1)*AX;
+      let c=null;
+      // dissolve eye as m rises
+      const dv=hash(i,j)*.5+Math.hypot(x/AX,y)*.5;
+      if(dv>=m*1.2-.1){
+        const e=eyeCell(x,y,i,j,t,pr,ex);
+        const reveal=.25+.75*ex;
+        c=[e[0]*reveal,e[1],e[2],e[3],0];
+      }
+      if(hm>0){
+        const h=heartCell(x,y,pulse);
+        if(h){c=[h[0]*hm,h[1],h[2],h[3],1]}
+      }
+      if(!c||c[0]<.04)continue;
+      const L=c[0];
+      let idx=Math.floor(L*(RAMP.length-1)+(hash(j,i)-.5)*3);
+      idx=clamp(idx,1,RAMP.length-1);
+      const k=.4+.6*Math.min(1,L*1.3);
+      ctx.fillStyle=style(c[1]*k,c[2]*k,c[3]*k);
+      ctx.fillText(RAMP[idx],i*CW,j*CH);
+    }
+  }
+
+  // sparkles
+  if(sm>0){
+    for(const s of stars){
+      const tw=.5+.5*Math.sin(t*s.sp+s.ph),a=sm*tw;
+      if(a<.08)continue;
+      const px=Math.round(((s.x/AX+1)/2)*COLS)*CW,py=Math.round(((s.y+1)/2)*ROWS)*CH;
+      ctx.fillStyle=style(200+55*a,210+45*a,255,255);
+      ctx.globalAlpha=Math.min(1,a*1.6);
+      ctx.fillText(s.big?'+':(tw>.7?'*':'.'),px,py);
+      if(s.big&&tw>.5){ctx.globalAlpha*=.5;ctx.fillText('|',px,py-CH);ctx.fillText('|',px,py+CH);ctx.fillText('-',px-CW,py);ctx.fillText('-',px+CW,py)}
+    }
+    ctx.globalAlpha=1;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
