@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Hunting Ghosts: Chain &amp; Jar</title>
+<style>
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;background:#0b0b0b;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;touch-action:none;user-select:none}
+#app{max-width:640px;height:100%;margin:0 auto;display:flex;flex-direction:column;background:#101010}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:#050505}
+h1{font-size:22px;font-style:italic;font-weight:800}
+#pauseBtn{padding:8px 14px;border:1px solid #333;border-radius:10px;background:#151515;color:#eee;font:700 13px inherit;cursor:pointer}
+#pauseBtn:hover{background:#222}
+.stats{display:flex;justify-content:space-between;padding:12px 18px;background:#0c0c0c}
+.stat label{display:block;font-size:11px;letter-spacing:1.5px;color:#888;font-weight:700}
+.stat b{font-size:24px}.stat small{font-size:12px;color:#888}
+.stat:nth-child(2){text-align:center}.stat:last-child{text-align:right}
+.low b{color:#ff7a6a}
+#stage{flex:1;min-height:0;position:relative;background:radial-gradient(circle at 50% 70%,#242424 0,#141414 70%)}
+canvas{position:absolute;inset:0;cursor:none}
+#ov{position:absolute;inset:0;background:#000b;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
+#ov.show{display:flex}
+#ovT{font-size:34px;font-weight:800;font-style:italic}#ovS{color:#aaa}
+#ovB{margin-top:8px;padding:10px 26px;border:2px solid #7fc7ff;border-radius:24px;background:#0d1a24;color:#bfe8ff;font:700 15px inherit;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="app">
+  <header><h1>Hunting Ghosts: Chain &amp; Jar</h1><button id="pauseBtn">II Pause</button></header>
+  <div class="stats">
+    <div class="stat"><label>SCORE</label><b id="sc">000</b></div>
+    <div class="stat" id="tm"><label>TIME</label><b id="tv">15</b><small>s</small></div>
+    <div class="stat"><label>CAUGHT</label><b id="ca">0</b></div>
+  </div>
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="ov"><div id="ovT"></div><div id="ovS"></div><button id="ovB"></button></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id),stage=$('stage'),cv=$('c'),ctx=cv.getContext('2d');
+const PI=Math.PI,PI2=PI*2,R=Math.random,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const GAME_TIME=15,GHOSTS=6;
+let W=0,H=0,dpr=1;
+function resize(){dpr=window.devicePixelRatio||1;W=stage.clientWidth;H=stage.clientHeight;
+  cv.width=W*dpr;cv.height=H*dpr;cv.style.width=W+'px';cv.style.height=H+'px'}
+new ResizeObserver(resize).observe(stage);resize();
+
+/* ---------- audio ---------- */
+let AC;
+function tone(f,d=.1,type='sine',v=.1,f2){
+  try{AC=AC||new AudioContext();const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime;
+    o.type=type;o.frequency.setValueAtTime(f,t);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+d);
+    g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);
+    o.connect(g);g.connect(AC.destination);o.start();o.stop(t+d);}catch(e){}
+}
+
+/* ---------- state ---------- */
+let ghosts,jarG,spawnQ,fx,chain,score,caught,timeLeft,paused,over,ovAct=()=>{};
+let best=+localStorage.getItem('gh_best')||0;
+const mouse={x:200,y:200,r:34};
+const mouth=()=>({x:W/2,y:H-142});
+
+function newGhost(fade){
+  return{x:30+R()*(W-60),y:30+R()*Math.max(40,H-230),vx:0,vy:0,tvx:0,tvy:0,nt:0,
+    s:.9+R()*.35,ph:R()*9,hooked:false,a:fade?0:1};
+}
+function reset(){
+  score=0;caught=0;timeLeft=GAME_TIME;over=false;paused=false;
+  ghosts=[];jarG=[];spawnQ=[];fx=[];
+  chain={s:'idle',hx:0,hy:0,dx:0,dy:-1,trav:0,max:0,target:null,ghost:null};
+  for(let i=0;i<GHOSTS;i++)ghosts.push(newGhost(false));
+  $('ov').classList.remove('show');$('pauseBtn').textContent='II Pause';
+}
+
+/* ---------- actions ---------- */
+function lockTarget(){
+  let b=null,bd=mouse.r;
+  for(const g of ghosts){if(g.hooked||g.a<.5)continue;const d=Math.hypot(g.x-mouse.x,g.y-mouse.y);if(d<bd){bd=d;b=g}}
+  return b;
+}
+function shoot(){
+  if(over||paused||chain.s!=='idle')return;
+  const m=mouth(),g=lockTarget(),tx=g?g.x:mouse.x,ty=g?g.y:mouse.y;
+  const d=Math.hypot(tx-m.x,ty-m.y)||1;
+  Object.assign(chain,{s:'out',hx:m.x,hy:m.y,dx:(tx-m.x)/d,dy:(ty-m.y)/d,trav:0,max:d+40,target:g,ghost:null});
+  tone(500,.12,'sawtooth',.06,900);
+}
+function togglePause(){
+  if(over)return;
+  paused=!paused;
+  $('pauseBtn').textContent=paused?'▶ Resume':'II Pause';
+  if(paused){showOv('PAUSED','','Resume',togglePause)}else $('ov').classList.remove('show');
+}
+function showOv(t,s,b,fn){$('ovT').textContent=t;$('ovS').textContent=s;$('ovB').textContent=b;ovAct=fn;$('ov').classList.add('show')}
+function endGame(){
+  over=true;if(score>best){best=score;localStorage.setItem('gh_best',best)}
+  tone(200,.5,'triangle',.12,80);
+  showOv("TIME'S UP",`Score ${score} · Caught ${caught} · Best ${best}`,'Play again',reset);
+}
+
+/* ---------- update ---------- */
+function update(dt,t){
+  timeLeft-=dt;if(timeLeft<=0){timeLeft=0;endGame()}
+
+  // ghosts wander
+  const top=20,bot=H-175;
+  for(const g of ghosts){
+    g.a=Math.min(1,g.a+dt*2);
+    if(g.hooked)continue;
+    if((g.nt-=dt)<=0){const a=R()*PI2,sp=35+R()*45;g.tvx=Math.cos(a)*sp;g.tvy=Math.sin(a)*sp;g.nt=1+R()*1.8}
+    g.vx+=(g.tvx-g.vx)*dt*2;g.vy+=(g.tvy-g.vy)*dt*2;
+    g.x+=g.vx*dt;g.y+=g.vy*dt;
+    if(g.x<24||g.x>W-24){g.vx*=-1;g.tvx*=-1;g.x=clamp(g.x,24,W-24)}
+    if(g.y<top||g.y>bot){g.vy*=-1;g.tvy*=-1;g.y=clamp(g.y,top,bot)}
+  }
+  for(let i=spawnQ.length-1;i>=0;i--)if((spawnQ[i]-=dt)<=0){spawnQ.splice(i,1);ghosts.push(newGhost(true))}
+
+  // chain
+  const c=chain,m=mouth();
+  if(c.s==='out'){
+    if(c.target&&ghosts.includes(c.target)&&!c.target.hooked){
+      const ax=c.target.x-c.hx,ay=c.target.y-c.hy,d=Math.hypot(ax,ay)||1;c.dx=ax/d;c.dy=ay/d;
+    }
+    const step=1100*dt;c.hx+=c.dx*step;c.hy+=c.dy*step;c.trav+=step;
+    for(const g of ghosts)if(!g.hooked&&Math.hypot(g.x-c.hx,g.y-c.hy)<24*g.s){
+      g.hooked=true;c.ghost=g;c.s='back';tone(700,.1,'square',.07);break;
+    }
+    if(c.s==='out'&&(c.trav>c.max||c.hx<-20||c.hx>W+20||c.hy<-20)){c.s='back';tone(220,.15,'sine',.08)}
+  }else if(c.s==='back'){
+    const dx=m.x-c.hx,dy=m.y-c.hy,d=Math.hypot(dx,dy),step=1300*dt;
+    if(d<=step){
+      if(c.ghost){
+        ghosts.splice(ghosts.indexOf(c.ghost),1);
+        jarG.push({x:m.x,y:m.y+6,vx:(R()-.5)*40,vy:90,in:false,ph:R()*9});
+        score+=10;caught++;spawnQ.push(.6);
+        fx.push({x:m.x,y:m.y,t:.5});
+        tone(660,.18,'triangle',.1,1100);
+      }
+      c.s='idle';c.ghost=null;
+    }else{
+      c.hx+=dx/d*step;c.hy+=dy/d*step;
+      if(c.ghost){c.ghost.x=c.hx+(R()-.5)*2;c.ghost.y=c.hy+(R()-.5)*2}
+    }
+  }
+
+  // ghosts inside the jar
+  const cx=W/2,x0=cx-38,x1=cx+38,y0=H-108,y1=H-38;
+  for(const j of jarG){
+    if(!j.in){j.y+=j.vy*dt;if(j.y>y0+8){j.in=true;j.vy=(R()-.5)*30}}
+    else{
+      j.vx+=(R()-.5)*60*dt;j.vy+=(R()-.5)*60*dt;
+      j.vx=clamp(j.vx,-30,30);j.vy=clamp(j.vy,-25,25);
+      j.x+=j.vx*dt;j.y+=j.vy*dt;
+      if(j.x<x0||j.x>x1){j.vx*=-1;j.x=clamp(j.x,x0,x1)}
+      if(j.y<y0||j.y>y1){j.vy*=-1;j.y=clamp(j.y,y0,y1)}
+    }
+  }
+  for(const f of fx)f.t-=dt;
+  fx=fx.filter(f=>f.t>0);
+}
+
+/* ---------- drawing ---------- */
+function drawGhost(x,y,s,t,a,ph){
+  const w=13*s,h=16*s,by=y+Math.sin(t*2+ph)*2;
+  ctx.save();ctx.globalAlpha=a;ctx.translate(x,by);
+  ctx.shadowColor='rgba(255,255,255,.45)';ctx.shadowBlur=10;ctx.fillStyle='#fff';
+  ctx.beginPath();ctx.arc(0,-h+w,w,PI,0);ctx.lineTo(w,h*.7);
+  const n=3,sw=2*w/n;
+  for(let i=0;i<n;i++)ctx.quadraticCurveTo(w-sw*i-sw/2,h*1.0+(i%2?-3:3)*s,w-sw*(i+1),h*.7);
+  ctx.closePath();ctx.fill();
+  ctx.shadowBlur=0;ctx.fillStyle='#222';
+  ctx.beginPath();ctx.ellipse(-w*.35,-h*.35,1.8*s,2.6*s,0,0,PI2);ctx.ellipse(w*.35,-h*.35,1.8*s,2.6*s,0,0,PI2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(0,-h*.05,1.6*s,2.2*s,0,0,PI2);ctx.fill();
+  ctx.restore();
+}
+function drawJar(t){
+  const cx=W/2,b=H-14;
+  ctx.save();ctx.translate(cx,0);
+  ctx.beginPath();
+  ctx.moveTo(-20,b-128);ctx.lineTo(-20,b-102);ctx.quadraticCurveTo(-22,b-86,-44,b-80);
+  ctx.quadraticCurveTo(-56,b-76,-56,b-62);ctx.lineTo(-56,b-14);ctx.quadraticCurveTo(-56,b,-42,b);
+  ctx.lineTo(42,b);ctx.quadraticCurveTo(56,b,56,b-14);ctx.lineTo(56,b-62);
+  ctx.quadraticCurveTo(56,b-76,44,b-80);ctx.quadraticCurveTo(22,b-86,20,b-102);ctx.lineTo(20,b-128);
+  ctx.fillStyle='rgba(120,210,235,.12)';ctx.fill();
+  ctx.shadowColor='rgba(100,200,255,.8)';ctx.shadowBlur=14;
+  ctx.strokeStyle='rgba(160,230,250,.9)';ctx.lineWidth=2.5;ctx.stroke();ctx.shadowBlur=0;
+  ctx.beginPath();ctx.ellipse(0,b-128,24,5,0,0,PI2);ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(-46,b-66);ctx.lineTo(-46,b-20);ctx.stroke();
+  ctx.restore();
+  ctx.save();ctx.shadowColor='#38b6ff';ctx.shadowBlur=12;ctx.fillStyle='#38b6ff';
+  ctx.beginPath();ctx.arc(cx,b-128,4,0,PI2);ctx.fill();ctx.restore();
+  for(const j of jarG)drawGhost(j.x,j.y,.7,t,1,j.ph);
+}
+function drawChain(t){
+  const c=chain;if(c.s==='idle')return;
+  const m=mouth(),dx=c.hx-m.x,dy=c.hy-m.y,L=Math.hypot(dx,dy);if(L<2)return;
+  ctx.save();ctx.translate(m.x,m.y);ctx.rotate(Math.atan2(dy,dx));
+  ctx.lineWidth=1.6;
+  for(let s=0;s<2;s++){
+    ctx.strokeStyle=s?'#7fc7ff':'#d8f0ff';ctx.beginPath();
+    for(let x=0;x<=L;x+=2){const y=Math.sin(x*.8+s*PI)*3;x?ctx.lineTo(x,y):ctx.moveTo(x,y)}
+    ctx.stroke();
+  }
+  ctx.strokeStyle='rgba(180,225,255,.55)';ctx.beginPath();
+  for(let x=0;x<L;x+=4){const y=Math.sin(x*.8)*3;ctx.moveTo(x,y);ctx.lineTo(x,-y)}
+  ctx.stroke();ctx.restore();
+  ctx.save();ctx.translate(c.hx,c.hy);
+  if(c.s==='out'){
+    ctx.shadowColor='#4cc3ff';ctx.shadowBlur=16;ctx.fillStyle='#bfe8ff';
+    ctx.beginPath();ctx.arc(0,0,5,0,PI2);ctx.fill();
+  }else{
+    ctx.strokeStyle='#d8f0ff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,-4,4,-PI/2,PI);ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawAim(){
+  const m=mouth(),g=chain.s==='idle'&&!paused&&!over?lockTarget():null;
+  if(g){
+    ctx.save();ctx.setLineDash([3,6]);ctx.strokeStyle='rgba(190,220,255,.55)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(m.x,m.y);ctx.lineTo(g.x,g.y);ctx.stroke();ctx.restore();
+  }
+  ctx.save();ctx.translate(mouse.x,mouse.y);ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=1.4;
+  if(g){ctx.beginPath();ctx.arc(0,0,9,0,PI2);ctx.stroke()}
+  ctx.beginPath();ctx.moveTo(-10,0);ctx.lineTo(10,0);ctx.moveTo(0,-10);ctx.lineTo(0,10);ctx.stroke();
+  ctx.restore();
+}
+function draw(t){
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
+  drawJar(t);
+  for(const g of ghosts)drawGhost(g.x,g.y,g.s,t,g.a,g.ph);
+  drawChain(t);
+  for(const f of fx){
+    ctx.strokeStyle=`rgba(150,225,255,${f.t*2})`;ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(W/2,H-142,(.5-f.t)*90,0,PI2);ctx.stroke();
+  }
+  drawAim();
+}
+function hud(){
+  $('sc').textContent=String(score).padStart(3,'0');
+  $('tv').textContent=Math.ceil(timeLeft);$('ca').textContent=caught;
+  $('tm').classList.toggle('low',timeLeft<=10);
+}
+
+/* ---------- input ---------- */
+function setMouse(e){
+  const r=cv.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;
+  mouse.r=e.pointerType==='touch'?48:34;
+}
+cv.addEventListener('pointermove',setMouse);
+cv.addEventListener('pointerdown',e=>{setMouse(e);shoot()});
+addEventListener('keydown',e=>{if(e.key==='p'||e.key==='P'||e.key==='Escape')togglePause()});
+$('pauseBtn').onclick=togglePause;
+$('ovB').onclick=()=>ovAct();
+
+/* ---------- loop ---------- */
+reset();
+let last=performance.now();
+function loop(n){
+  const dt=Math.min(.05,(n-last)/1000);last=n;
+  if(!paused&&!over)update(dt,n/1000);
+  draw(n/1000);hud();requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
