@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Animated Deadline Loader</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1 class="title">Animated <span>Deadline</span> Loader</h1>
+
+  <main class="stage">
+    <div class="loader">
+      <div class="track">
+        <div class="fill"></div>
+
+        <!-- Grim reaper (moves with the fill) -->
+        <svg class="reaper" viewBox="0 0 60 64" aria-hidden="true">
+          <g fill="#d6264a">
+            <path d="M22 8c0-5 4-8 9-8s9 3 9 8c0 3-1 5-3 7l8 8 6 41H8l6-41 8-8c-2-2-3-4-3-7z" transform="translate(-4 3)"/>
+            <rect x="40" y="2" width="2.5" height="60" rx="1"/>
+            <path d="M42 3c10-2 17 3 17 10-4-4-9-6-17-5z"/>
+          </g>
+          <circle cx="24" cy="15" r="2" fill="#fff"/>
+        </svg>
+
+        <!-- Worker at the desk (right end) -->
+        <svg class="worker" viewBox="0 0 80 64" aria-hidden="true">
+          <g fill="#1c1c24">
+            <circle cx="30" cy="14" r="8"/>
+            <path d="M22 24h16l4 18H20z"/>
+            <path d="M38 28l16 8-2 4-18-8z"/>
+            <path d="M20 42h24v6H24z"/>
+          </g>
+          <g fill="#c9ccd6">
+            <rect x="50" y="30" width="22" height="14" rx="2"/>
+            <rect x="8" y="48" width="68" height="8" rx="2"/>
+            <rect x="14" y="56" width="5" height="8"/>
+            <rect x="66" y="56" width="5" height="8"/>
+          </g>
+        </svg>
+      </div>
+
+      <p class="deadline-days">Deadline <span class="day">7</span> days</p>
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

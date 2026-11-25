@@ -1,0 +1,89 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --red: #d6264a;
+  --track: #dcdee6;
+  --dark: #0f1720;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--dark);
+  font-family: "Poppins", "Segoe UI", sans-serif;
+}
+
+.title {
+  color: #fff;
+  text-align: center;
+  font-size: 1.8rem;
+  padding: 40px 16px 24px;
+}
+.title span { color: #b6f24a; }
+
+.stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.loader {
+  width: min(760px, 100%);
+  background: #fff;
+  border-radius: 6px;
+  padding: 110px 40px 70px;
+}
+
+.track {
+  position: relative;
+  height: 14px;
+  background: var(--track);
+  border-radius: 3px;
+}
+
+.fill {
+  height: 100%;
+  width: 0;
+  background: var(--red);
+  border-radius: 3px;
+  transition: width var(--tick, 1s) linear;
+}
+
+.reaper {
+  position: absolute;
+  bottom: 10px;
+  left: 0;
+  width: 54px;
+  transform: translateX(-12px);
+  transition: left var(--tick, 1s) linear;
+  animation: float 1.2s ease-in-out infinite;
+}
+
+.worker {
+  position: absolute;
+  right: -4px;
+  bottom: 8px;
+  width: 80px;
+}
+.worker.panic { animation: shake 0.25s linear infinite; }
+
+.deadline-days {
+  text-align: center;
+  margin-top: 28px;
+  font-size: 0.8rem;
+  color: #555;
+}
+.deadline-days .day { color: var(--red); font-weight: 700; }
+
+@keyframes float {
+  0%, 100% { margin-bottom: 0; }
+  50%      { margin-bottom: 6px; }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25%      { transform: translateX(-2px); }
+  75%      { transform: translateX(2px); }
+}
