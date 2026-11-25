@@ -1,0 +1,46 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #fdfdfd;
+  font-family: "Poppins", "Segoe UI", sans-serif;
+}
+
+.title {
+  background: #1b1b1f;
+  color: #fff;
+  text-align: center;
+  font-style: italic;
+  font-weight: 600;
+  padding: 60px 20px 20px;
+}
+
+.stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bat {
+  width: 32px;
+  height: 32px;
+  /* sprite sheet (6 frames x 32px = 192px) is injected by script.js */
+  background-image: var(--sprite);
+  background-repeat: no-repeat;
+  background-size: 192px 32px;
+  image-rendering: pixelated;
+  transform: scale(4);
+  animation: flap 0.4s steps(6) infinite, bob 1.6s ease-in-out infinite;
+}
+
+@keyframes flap {
+  to { background-position: -192px 0; }
+}
+
+@keyframes bob {
+  0%, 100% { margin-top: 0; }
+  50%      { margin-top: -12px; }
+}
